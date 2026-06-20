@@ -8,7 +8,7 @@ from concurrent.futures import ProcessPoolExecutor
 # CONFIGURAÇÕES GLOBAIS
 # ==========================================
 # Defina o número máximo de segmentos desejados para o algoritmo SLIC
-MAXIMO_SEGMENTOS = 600000
+MAXIMO_SEGMENTOS = 300
 # ==========================================
 
 # Configuração de logging

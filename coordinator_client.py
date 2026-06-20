@@ -38,41 +38,57 @@ def dividir_imagem_em_blocos(imagem_array, quantidade_blocos):
 
 
 def enviar_bloco_para_worker(worker_address, id_bloco, bloco, clock):
-    
-    print(
-        f"[t={clock.get_time()}] "
-        f"Enviando bloco {id_bloco} para {worker_address}"
-    )
-    canal = grpc.insecure_channel(
-        worker_address,
-        options=[
-            ("grpc.max_send_message_length", 50 * 1024 * 1024),
-            ("grpc.max_receive_message_length", 50 * 1024 * 1024),
-        ]
-    )
 
-    stub = segmentacao_pb2_grpc.SegmentacaoServiceStub(canal)
+    MAX_TENTATIVAS = 3
 
-    altura, largura, _ = bloco.shape
+    for tentativa in range(MAX_TENTATIVAS):
+#Timeout com retry
+        try:
 
-    request = segmentacao_pb2.BlocoImagemRequest(
-        id_bloco=id_bloco,
-        largura=largura,
-        altura=altura,
-        imagem=Image.fromarray(bloco.astype(np.uint8), "RGB").tobytes(),
-        timestamp=clock.get_time()
-    )
+            print(f"Tentativa {tentativa + 1} - Enviando bloco {id_bloco} para {worker_address}")
 
-    response = stub.ProcessarBloco(request)
-    clock.update(response.timestamp)
+            canal = grpc.insecure_channel(
+                worker_address,
+                options=[
+                    ("grpc.max_send_message_length", 50 * 1024 * 1024),
+                    ("grpc.max_receive_message_length", 50 * 1024 * 1024),
+                ]
+            )
 
-    bloco_segmentado = Image.frombytes(
-        "RGB",
-        (response.largura, response.altura),
-        response.imagem_segmentada
-    )
+            stub = segmentacao_pb2_grpc.SegmentacaoServiceStub(canal)
 
-    return np.array(bloco_segmentado)
+            altura, largura, _ = bloco.shape
+
+            request = segmentacao_pb2.BlocoImagemRequest(
+                id_bloco=id_bloco,
+                largura=largura,
+                altura=altura,
+                imagem=Image.fromarray(bloco.astype(np.uint8), "RGB").tobytes(),
+                timestamp=clock.get_time()
+            )
+
+            response = stub.ProcessarBloco(request, timeout=5)
+
+            clock.update(response.timestamp)
+
+            bloco_segmentado = Image.frombytes(
+                "RGB",
+                (response.largura, response.altura),
+                response.imagem_segmentada
+            )
+
+            return np.array(bloco_segmentado)
+
+        except grpc.RpcError as e:
+
+            print(f"Falha na tentativa {tentativa + 1}: {e.code()}")
+
+            if tentativa < MAX_TENTATIVAS - 1:
+                print("Tentando novamente...")
+                time.sleep(2)
+            else:
+                print("Número máximo de tentativas atingido.")
+                return None
 
 
 def main():
