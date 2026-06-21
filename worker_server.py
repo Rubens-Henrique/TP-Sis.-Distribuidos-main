@@ -36,7 +36,7 @@ class SegmentacaoService(segmentacao_pb2_grpc.SegmentacaoServiceServicer):
             request.altura
         )
 
-        bloco_segmentado = aplicar_slic(bloco_array)
+        bloco_segmentado = aplicar_slic(bloco_array,request.n_segmentos,request.compactness)
         self.clock.increment()
 
         bloco_segmentado_bytes = array_para_bytes(bloco_segmentado)
