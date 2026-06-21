@@ -10,7 +10,8 @@ from lamport_clock import LamportClock
 
 
 WORKERS = [
-    "localhost:50051"
+    "localhost:50051",
+    "localhost:50052"  # Segunda maquina Worker
 ]
 
 CAMINHO_IMAGEM = "teste.jpg"
@@ -37,14 +38,11 @@ def dividir_imagem_em_blocos(imagem_array, quantidade_blocos):
     return blocos
 
 
-def enviar_bloco_para_worker(worker_address, id_bloco, bloco, clock):
+def _tentar_worker(worker_address, id_bloco, bloco, clock, max_tentativas=3):
+    """Tenta processar o bloco em UM worker especifico, com retries."""
 
-    MAX_TENTATIVAS = 3
-
-    for tentativa in range(MAX_TENTATIVAS):
-#Timeout com retry
+    for tentativa in range(max_tentativas):
         try:
-
             print(f"Tentativa {tentativa + 1} - Enviando bloco {id_bloco} para {worker_address}")
 
             canal = grpc.insecure_channel(
@@ -67,7 +65,7 @@ def enviar_bloco_para_worker(worker_address, id_bloco, bloco, clock):
                 timestamp=clock.get_time()
             )
 
-            response = stub.ProcessarBloco(request, timeout=5)
+            response = stub.ProcessarBloco(request, timeout=30)
 
             clock.update(response.timestamp)
 
@@ -80,15 +78,42 @@ def enviar_bloco_para_worker(worker_address, id_bloco, bloco, clock):
             return np.array(bloco_segmentado)
 
         except grpc.RpcError as e:
+            print(f"Falha na tentativa {tentativa + 1} em {worker_address}: {e.code()}")
 
-            print(f"Falha na tentativa {tentativa + 1}: {e.code()}")
-
-            if tentativa < MAX_TENTATIVAS - 1:
-                print("Tentando novamente...")
+            if tentativa < max_tentativas - 1:
+                print("Tentando novamente no mesmo worker...")
                 time.sleep(2)
             else:
-                print("Número máximo de tentativas atingido.")
+                print(f"Worker {worker_address} esgotou as tentativas.")
                 return None
+
+        finally:
+            canal.close()
+
+
+def enviar_bloco_com_failover(id_bloco, bloco, clock, lista_workers, worker_preferido):
+    """
+    Tenta primeiro no worker_preferido. Se falhar todas as tentativas,
+    faz failover para os demais workers da lista, na ordem.
+    """
+
+    # Monta a ordem de tentativa: worker preferido primeiro, depois os outros
+    ordem_workers = [worker_preferido] + [w for w in lista_workers if w != worker_preferido]
+
+    for worker_address in ordem_workers:
+        clock.increment()
+
+        resultado = _tentar_worker(worker_address, id_bloco, bloco, clock)
+
+        if resultado is not None:
+            if worker_address != worker_preferido:
+                print(f"Failover bem-sucedido: bloco {id_bloco} processado por {worker_address}")
+            return resultado
+
+        print(f"Worker {worker_address} indisponivel para o bloco {id_bloco}, tentando proximo worker...")
+
+    print(f"ERRO CRITICO: nenhum worker disponivel conseguiu processar o bloco {id_bloco}.")
+    return None
 
 
 def main():
@@ -103,15 +128,18 @@ def main():
 
     resultados = []
 
-    for worker, (id_bloco, inicio, fim, bloco) in zip(WORKERS, blocos):        
-        clock.increment()
-
-        bloco_segmentado = enviar_bloco_para_worker(
-            worker,
+    for worker, (id_bloco, inicio, fim, bloco) in zip(WORKERS, blocos):
+        bloco_segmentado = enviar_bloco_com_failover(
             id_bloco,
             bloco,
-            clock
+            clock,
+            WORKERS,
+            worker_preferido=worker
         )
+
+        if bloco_segmentado is None:
+            print(f"Abortando: bloco {id_bloco} nao pode ser processado por nenhum worker.")
+            return
 
         resultados.append((inicio, fim, bloco_segmentado))
 

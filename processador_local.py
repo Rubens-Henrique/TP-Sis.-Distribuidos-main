@@ -8,7 +8,7 @@ from concurrent.futures import ProcessPoolExecutor
 # CONFIGURAÇÕES GLOBAIS
 # ==========================================
 # Defina o número máximo de segmentos desejados para o algoritmo SLIC
-MAXIMO_SEGMENTOS = 300
+MAXIMO_SEGMENTOS = 3000
 # ==========================================
 
 # Configuração de logging
@@ -146,8 +146,8 @@ def processar_arquivo(caminho_entrada: str, caminho_saida: str) -> None:
 
 if __name__ == "__main__":
     DIRETORIO_ATUAL = os.path.dirname(os.path.abspath(__file__))
-    IMAGEM_ENTRADA = os.path.join(DIRETORIO_ATUAL, "HHpCVrzWkAQTAm6.jpg")
-    IMAGEM_SAIDA = os.path.join(DIRETORIO_ATUAL, "imagem_processada_paralela.jpg")
+    IMAGEM_ENTRADA = os.path.join(DIRETORIO_ATUAL, "imagem_teste.jpg")
+    IMAGEM_SAIDA = os.path.join(DIRETORIO_ATUAL, "imagem_processada_paralela1.jpg")
 
     print("--- Pipeline de Processamento Paralelo ---")
     processar_arquivo(IMAGEM_ENTRADA, IMAGEM_SAIDA)
